@@ -39,6 +39,10 @@ impl StackAccess<'_> {
 	fn push_bool(self: &mut Self, value: bool) {
 		self.push(if value { 1 } else { 0 })
 	}
+	fn peek(self: &Self, depth: u32) -> u32 {
+		assert!(self.stack_height() > depth as usize);
+		self.stack[self.stack.len() - 1 - depth as usize]
+	}
 	fn stack_height(self: &Self) -> usize {
 		self.stack.len() - self.disallowed
 	}
@@ -82,187 +86,191 @@ impl FuncExecutor<'_, '_> {
 
 		let inst = self.memory.read(self.prg_ptr);
 
-		match inst {
-			// Stack Manipulation
-			0x001000 => {
-				// push
-				self.prg_ptr = self.prg_ptr + 1;
-				self.stack_access.push(self.memory.read(self.prg_ptr));
-			}
-			0x001001 => {
-				// drop
-				self.stack_access.pop();
-			}
-			0x001002 => {
-				// load
-				let a = self.stack_access.pop();
-				self.stack_access.push(self.memory.read(a));
-			}
-			0x001003 => {
-				// stor
-				let a = self.stack_access.pop();
-				let v = self.stack_access.pop();
-				self.memory.write(a, v);
-			}
+		if inst & 0xfff000 == 0 {
+			self.stack_access.push(self.stack_access.peek(inst & 0xfff));
+		} else {
+			match inst {
+				// Stack Manipulation
+				0x001000 => {
+					// push
+					self.prg_ptr = self.prg_ptr + 1;
+					self.stack_access.push(self.memory.read(self.prg_ptr));
+				}
+				0x001001 => {
+					// drop
+					self.stack_access.pop();
+				}
+				0x001002 => {
+					// load
+					let a = self.stack_access.pop();
+					self.stack_access.push(self.memory.read(a));
+				}
+				0x001003 => {
+					// stor
+					let a = self.stack_access.pop();
+					let v = self.stack_access.pop();
+					self.memory.write(a, v);
+				}
 
-			// Math
-			0x002000 => {
-				// neg
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x == 0)
-			}
-			0x002001 => {
-				// add
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x + y)
-			}
-			0x002002 => {
-				// sub
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x - y);
-			}
-			0x002003 => {
-				// mul
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x * y);
-			}
-			0x002004 => {
-				// udiv
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x / y);
-			}
-			0x002005 => {
-				// udiv
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(((x as i32) / (y as i32)) as u32);
-			}
-			0x002006 => {
-				// mod
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x % y);
-			}
-			0x002007 => {
-				// rem
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(((x as i32) % (y as i32)) as u32);
-			}
-			0x002008 => {
-				// not
-				let x = self.stack_access.pop();
-				self.stack_access.push(!x);
-			}
-			0x002009 => {
-				// and
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x & y);
-			}
-			0x00200a => {
-				// or
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x | y);
-			}
-			0x00200b => {
-				// xor
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push(x ^ y);
-			}
+				// Math
+				0x002000 => {
+					// neg
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x == 0)
+				}
+				0x002001 => {
+					// add
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x + y)
+				}
+				0x002002 => {
+					// sub
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x - y);
+				}
+				0x002003 => {
+					// mul
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x * y);
+				}
+				0x002005 => {
+					// udiv
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x / y);
+				}
+				0x002006 => {
+					// udiv
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(((x as i32) / (y as i32)) as u32);
+				}
+				0x002008 => {
+					// mod
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x % y);
+				}
+				0x002009 => {
+					// rem
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(((x as i32) % (y as i32)) as u32);
+				}
+				0x00200b => {
+					// not
+					let x = self.stack_access.pop();
+					self.stack_access.push(!x);
+				}
+				0x00200c => {
+					// and
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x & y);
+				}
+				0x00200d => {
+					// or
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x | y);
+				}
+				0x00200e => {
+					// xor
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push(x ^ y);
+				}
 
-			// Comparisons
-			0x003000 => {
-				// eq
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x == y);
-			}
-			0x003001 => {
-				//ne
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x != y);
-			}
-			0x003002 => {
-				// ult
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x < y);
-			}
-			0x003003 => {
-				// slt
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool((x as i32) < (y as i32));
-			}
-			0x003004 => {
-				// ugt
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x > y);
-			}
-			0x003005 => {
-				// sgt
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool((x as i32) > (y as i32));
-			}
-			0x003006 => {
-				// ule
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x <= y);
-			}
-			0x003007 => {
-				// sle
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool((x as i32) <= (y as i32));
-			}
-			0x003008 => {
-				// uge
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool(x >= y);
-			}
-			0x003009 => {
-				// sge
-				let y = self.stack_access.pop();
-				let x = self.stack_access.pop();
-				self.stack_access.push_bool((x as i32) >= (y as i32));
-			}
+				// Comparisons
+				0x003000 => {
+					// eq
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x == y);
+				}
+				0x003001 => {
+					//ne
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x != y);
+				}
+				0x003002 => {
+					// ult
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x < y);
+				}
+				0x003003 => {
+					// slt
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool((x as i32) < (y as i32));
+				}
+				0x003004 => {
+					// ugt
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x > y);
+				}
+				0x003005 => {
+					// sgt
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool((x as i32) > (y as i32));
+				}
+				0x003006 => {
+					// ule
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x <= y);
+				}
+				0x003007 => {
+					// sle
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool((x as i32) <= (y as i32));
+				}
+				0x003008 => {
+					// uge
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool(x >= y);
+				}
+				0x003009 => {
+					// sge
+					let y = self.stack_access.pop();
+					let x = self.stack_access.pop();
+					self.stack_access.push_bool((x as i32) >= (y as i32));
+				}
 
-			// End of functio
-			0x004000 => {
-				// ret
-				func_stack = Some(Vec::new());
-			}
-			0x004001 => {
-				// jmp
-				func_stack = Some(vec![self.stack_access.pop()])
-			}
-			0x004002 => {
-				// if
-				let f1 = self.stack_access.pop();
-				let f2 = self.stack_access.pop();
-				let t = self.stack_access.pop();
-				func_stack = Some(vec![if t == 0 { f2 } else { f1 }])
-			}
-			0x004003 => {
-				// call
-				let f1 = self.stack_access.pop();
-				let f2 = self.stack_access.pop();
-				func_stack = Some(vec![f2, f1]);
-			}
+				// End of functio
+				0x004000 => {
+					// ret
+					func_stack = Some(Vec::new());
+				}
+				0x004001 => {
+					// jmp
+					func_stack = Some(vec![self.stack_access.pop()])
+				}
+				0x004002 => {
+					// if
+					let f1 = self.stack_access.pop();
+					let f2 = self.stack_access.pop();
+					let t = self.stack_access.pop();
+					func_stack = Some(vec![if t == 0 { f2 } else { f1 }])
+				}
+				0x004003 => {
+					// call
+					let f1 = self.stack_access.pop();
+					let f2 = self.stack_access.pop();
+					func_stack = Some(vec![f2, f1]);
+				}
 
-			_ => panic!("Unkown opcode {}, at {}", inst, self.prg_ptr),
+				_ => panic!("Unkown opcode {}, at {}", inst, self.prg_ptr),
+			}
 		}
 		match &func_stack {
 			None => self.prg_ptr = self.prg_ptr + 1,
