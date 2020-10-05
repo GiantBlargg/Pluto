@@ -1,0 +1,47 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug executable 'pluto'",
+			"cargo": {
+				"args": [
+					"build",
+					"--bin=pluto",
+					"--package=pluto"
+				],
+				"filter": {
+					"name": "pluto",
+					"kind": "bin"
+				}
+			},
+			"args": [
+				"test.plt"
+			],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug unit tests in executable 'pluto'",
+			"cargo": {
+				"args": [
+					"test",
+					"--no-run",
+					"--bin=pluto",
+					"--package=pluto"
+				],
+				"filter": {
+					"name": "pluto",
+					"kind": "bin"
+				}
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
+		}
+	]
+}
