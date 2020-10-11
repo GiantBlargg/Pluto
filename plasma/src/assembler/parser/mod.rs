@@ -14,6 +14,9 @@ pub struct Function {
 
 pub enum Statement {
 	Function(Function),
+	Skip(u32),
+	SkipTo(u32),
+	Word(u32),
 }
 
 pub struct Parser<T: Read> {

@@ -30,6 +30,21 @@ impl Assembler {
 					self.data.push(inst.0 & 0xffffff);
 				}
 			}
+			Statement::Skip(num) => {
+				for _ in 0..num {
+					self.data.push(0);
+				}
+			}
+			Statement::SkipTo(address) => {
+				let num = address as usize - self.data.len();
+				if num > 0xffffff {
+					panic!()
+				}
+				for _ in 0..num {
+					self.data.push(0);
+				}
+			}
+			Statement::Word(value) => self.data.push(value),
 		}
 	}
 	pub fn write(self: Self, mut out: File) -> io::Result<()> {

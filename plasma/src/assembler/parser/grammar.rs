@@ -2,18 +2,34 @@ use super::{Function, OpCode, Statement};
 use nom::{
 	alt,
 	branch::alt,
-	bytes::streaming::{tag, tag_no_case},
-	character::streaming::multispace0,
+	bytes::streaming::tag_no_case,
+	character::streaming::{digit1, hex_digit1, multispace0},
 	is_not,
 	multi::many0,
 	named, pair,
 	sequence::tuple,
 	tag, tag_no_case, tuple, value, IResult,
 };
+use std::str::from_utf8;
 
 named!(comment, value!(&[], pair!(tag!("#"), is_not!("\n\r"))));
 
 named!(ws, alt!(multispace0 | comment));
+
+fn decimal(i: &[u8]) -> IResult<&[u8], u32> {
+	let (r, n) = digit1(i)?;
+	Ok((r, u32::from_str_radix(from_utf8(n).unwrap(), 10).unwrap()))
+}
+
+fn hex(i: &[u8]) -> IResult<&[u8], u32> {
+	let (r, (_, n)) = tuple((tag_no_case("0x"), hex_digit1))(i)?;
+	Ok((r, u32::from_str_radix(from_utf8(n).unwrap(), 16).unwrap()))
+}
+
+fn number(i: &[u8]) -> IResult<&[u8], u32> {
+	let (r, (_, n)) = tuple((ws, alt((hex, decimal))))(i)?;
+	Ok((r, n))
+}
 
 macro_rules! simple_inst {
 	($i:expr, $name:expr, $opcode:expr) => {
@@ -75,31 +91,31 @@ named!(
 );
 
 fn function(i: &[u8]) -> IResult<&[u8], Statement> {
-	let func = tag_no_case("func");
-	let zero = tag("0");
-	let zerotwo = tag("0");
-	let (r, (_, _, _, _, _, _, _, mut block, end)) = tuple((
-		ws,
-		func,
-		ws,
-		zero,
-		ws,
-		zerotwo,
-		ws,
+	let (r, (_, args, ret, mut block, end)) = tuple((
+		tag_no_case("func"),
+		number,
+		number,
 		many0(alt((stack, math, comp))),
 		end,
 	))(i)?;
 	block.push(end);
-	Ok((
-		r,
-		Statement::Function(Function {
-			args: 0,
-			ret: 0,
-			block,
-		}),
-	))
+	Ok((r, Statement::Function(Function { args, ret, block })))
+}
+
+fn skip(i: &[u8]) -> IResult<&[u8], Statement> {
+	let (r, (_, v)) = tuple((tag_no_case("skip"), number))(i)?;
+	Ok((r, Statement::Skip(v)))
+}
+fn skip_to(i: &[u8]) -> IResult<&[u8], Statement> {
+	let (r, (_, v)) = tuple((tag_no_case("skipto"), number))(i)?;
+	Ok((r, Statement::SkipTo(v)))
+}
+fn word(i: &[u8]) -> IResult<&[u8], Statement> {
+	let (r, (_, v)) = tuple((tag_no_case("word"), number))(i)?;
+	Ok((r, Statement::Word(v)))
 }
 
 pub fn statement(i: &[u8]) -> IResult<&[u8], Statement> {
-	function(i)
+	let (r, (_, stat)) = tuple((ws, alt((function, skip, skip_to, word))))(i)?;
+	Ok((r, stat))
 }
