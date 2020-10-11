@@ -1,10 +1,9 @@
-use std::iter::FromIterator;
-
 mod func_execute;
-use func_execute::FuncExecutor;
-
 mod memory;
+
+use func_execute::FuncExecutor;
 use memory::MemoryAccessor;
+use std::iter::FromIterator;
 
 struct InteruptVectors {
 	reset: u32,
