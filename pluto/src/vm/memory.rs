@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 struct MemoryBlock {
 	contents: Vec<u32>,
 	offset: u32,
@@ -19,34 +21,42 @@ impl MemoryBlock {
 		self.contents[(address - self.offset) as usize] = value & 0xffffff;
 	}
 }
+
+#[derive(Clone)]
 pub struct MemoryAccessor {
-	mem_blocks: Vec<MemoryBlock>,
+	mem_blocks: Rc<RefCell<Vec<MemoryBlock>>>,
 }
 impl MemoryAccessor {
 	pub fn new(mapping: u32, rom: Vec<u32>) -> Self {
-		match mapping {
-			0 => Self {
-				mem_blocks: vec![MemoryBlock {
-					contents: rom,
-					offset: 0,
-					readable: true,
-					writeable: false,
-				}],
-			},
+		let mem_blocks = match mapping {
+			0 => vec![MemoryBlock {
+				contents: rom,
+				offset: 0,
+				readable: true,
+				writeable: false,
+			}],
 			_ => panic!("Unkown Mapping Mode"),
+		};
+		Self {
+			mem_blocks: Rc::new(RefCell::new(mem_blocks)),
 		}
 	}
-	fn get_memory_block(self: &mut Self, address: u32, write: bool) -> &mut MemoryBlock {
+	pub fn read(self: &Self, address: u32) -> u32 {
 		self.mem_blocks
-			.iter_mut()
-			.filter(|b| b.check(address, write))
+			.borrow()
+			.iter()
+			.filter(|b| b.check(address, false))
 			.next()
 			.unwrap()
-	}
-	pub fn read(self: &mut Self, address: u32) -> u32 {
-		self.get_memory_block(address, false).read(address)
+			.read(address)
 	}
 	pub fn write(self: &mut Self, address: u32, value: u32) {
-		self.get_memory_block(address, false).write(address, value)
+		self.mem_blocks
+			.borrow_mut()
+			.iter_mut()
+			.filter(|b| b.check(address, true))
+			.next()
+			.unwrap()
+			.write(address, value)
 	}
 }

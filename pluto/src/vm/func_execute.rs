@@ -1,18 +1,15 @@
 use super::memory::MemoryAccessor;
 
-struct StackAccess<'a> {
-	stack: &'a mut Vec<u32>,
+struct StackAccess {
+	stack: Vec<u32>,
 	disallowed: usize,
 	retc: usize,
 }
-
-impl StackAccess<'_> {
+impl StackAccess {
 	fn decompose_sig(func_sig: u32) -> (u32, u32) {
 		(func_sig >> 12, func_sig & 0xfff)
 	}
-	fn new<'a>(stack: &'a mut Vec<u32>, func_sig: u32) -> StackAccess<'a> {
-		// let argc = func_sig >> 12;
-		// let retc = func_sig & 0xfff;
+	fn new(stack: Vec<u32>, func_sig: u32) -> StackAccess {
 		let (argc, retc) = Self::decompose_sig(func_sig);
 		let disallowed = stack.len() - argc as usize;
 		assert!(
@@ -47,29 +44,29 @@ impl StackAccess<'_> {
 		self.stack.len() - self.disallowed
 	}
 	fn compat_with(self: &Self, funcs: Vec<u32>) -> bool {
-		self.stack_height() as i32
+		self.stack_height() as isize
 			+ funcs
 				.iter()
 				.map(|func| {
 					let (argc, retc) = Self::decompose_sig(*func);
-					retc as i32 - argc as i32
+					retc as isize - argc as isize
 				})
 				.fold(0, |a, b| a + b)
-			== self.retc as i32
+			== self.retc as isize
+	}
+	fn dispose(self: Self) -> Vec<u32> {
+		self.stack
 	}
 }
 
-pub struct FuncExecutor<'a, 'b> {
-	memory: &'a mut MemoryAccessor,
+pub struct FuncExecutor {
+	memory: MemoryAccessor,
 	prg_ptr: u32,
-	stack_access: StackAccess<'b>,
+	stack_access: StackAccess,
+	func_stack: Option<Vec<u32>>,
 }
-impl FuncExecutor<'_, '_> {
-	pub fn new<'a, 'b>(
-		memory: &'a mut MemoryAccessor,
-		func_ptr: u32,
-		value_stack: &'b mut Vec<u32>,
-	) -> FuncExecutor<'a, 'b> {
+impl FuncExecutor {
+	pub fn new<'b>(memory: MemoryAccessor, func_ptr: u32, value_stack: Vec<u32>) -> FuncExecutor {
 		let prg_ptr = func_ptr + 1;
 
 		let func_sig = memory.read(func_ptr);
@@ -79,11 +76,10 @@ impl FuncExecutor<'_, '_> {
 			memory,
 			prg_ptr,
 			stack_access,
+			func_stack: None,
 		}
 	}
-	pub fn tick(self: &mut Self) -> Option<Vec<u32>> {
-		let mut func_stack: Option<Vec<u32>> = None;
-
+	pub fn tick(self: &mut Self) -> bool {
 		let inst = self.memory.read(self.prg_ptr);
 
 		if inst & 0xfff000 == 0 {
@@ -249,31 +245,34 @@ impl FuncExecutor<'_, '_> {
 				// End of functio
 				0x004000 => {
 					// ret
-					func_stack = Some(Vec::new());
+					self.func_stack = Some(Vec::new());
 				}
 				0x004001 => {
 					// jmp
-					func_stack = Some(vec![self.stack_access.pop()])
+					self.func_stack = Some(vec![self.stack_access.pop()])
 				}
 				0x004002 => {
 					// if
 					let f1 = self.stack_access.pop();
 					let f2 = self.stack_access.pop();
 					let t = self.stack_access.pop();
-					func_stack = Some(vec![if t == 0 { f2 } else { f1 }])
+					self.func_stack = Some(vec![if t == 0 { f2 } else { f1 }])
 				}
 				0x004003 => {
 					// call
 					let f1 = self.stack_access.pop();
 					let f2 = self.stack_access.pop();
-					func_stack = Some(vec![f2, f1]);
+					self.func_stack = Some(vec![f2, f1]);
 				}
 
 				_ => panic!("Unkown opcode {}, at {}", inst, self.prg_ptr),
 			}
 		}
-		match &func_stack {
-			None => self.prg_ptr = self.prg_ptr + 1,
+		match &self.func_stack {
+			None => {
+				self.prg_ptr = self.prg_ptr + 1;
+				true
+			}
 			Some(f) => {
 				let sigs = f
 					.iter()
@@ -282,10 +281,12 @@ impl FuncExecutor<'_, '_> {
 				assert!(
 					self.stack_access.compat_with(sigs),
 					"Wrong number of returns"
-				)
+				);
+				false
 			}
 		}
-
-		func_stack
+	}
+	pub fn dispose(self: Self) -> (Vec<u32>, Vec<u32>) {
+		(self.func_stack.unwrap(), self.stack_access.dispose())
 	}
 }

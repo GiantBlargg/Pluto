@@ -44,13 +44,17 @@ fn convert_24_bit(bytes: Vec<u8>) -> Vec<u32> {
 		.collect()
 }
 
+enum Func {
+	Stack(Vec<u32>),
+	Executor(FuncExecutor),
+}
+
 pub struct PlutoVM {
 	memory: MemoryAccessor,
 	vectors: InteruptVectors,
-	value_stack: Vec<u32>,
+	func: Func,
 	function_stack: Vec<u32>,
 }
-
 impl PlutoVM {
 	pub fn new(bytes: Vec<u8>) -> Self {
 		let rom = convert_24_bit(bytes);
@@ -62,38 +66,56 @@ impl PlutoVM {
 			hdr.title, hdr.developer, hdr.publisher
 		);
 		let memory = MemoryAccessor::new(hdr.mapping, rom);
+		let function_stack = vec![hdr.vectors.reset];
 		Self {
 			memory,
 			vectors: hdr.vectors,
-			value_stack: Vec::new(),
-			function_stack: Vec::new(),
+			func: Func::Stack(Vec::new()),
+			function_stack,
 		}
 	}
-	pub fn start(self: Self) {
-		self._start();
-	}
-	fn _start(mut self: Self) {
-		self.function_stack.push(self.vectors.reset);
-		while let Some(func_ptr) = self.function_stack.pop() {
-			let mut func_executor =
-				FuncExecutor::new(&mut self.memory, func_ptr, &mut self.value_stack);
-
-			loop {
-				match func_executor.tick() {
-					None => (),
-					Some(mut f) => {
-						self.function_stack.append(&mut f);
-						break;
+	fn tick(self: &mut Self) -> bool {
+		let func_executor: &mut FuncExecutor = match &mut self.func {
+			Func::Stack(stack) => {
+				let func_ptr = match self.function_stack.pop() {
+					Some(func_ptr) => func_ptr,
+					None => {
+						// Program Over
+						if stack.len() > 0 {
+							println!("Values left on the stack:");
+							for i in stack.iter().rev() {
+								println!("{}", i);
+							}
+						};
+						return false;
 					}
+				};
+				self.func = Func::Executor(FuncExecutor::new(
+					self.memory.clone(),
+					func_ptr,
+					std::mem::take(stack),
+				));
+				match &mut self.func {
+					Func::Executor(e) => e,
+					Func::Stack(_) => panic!("The world doesn't make sense anymore."),
 				}
 			}
+			Func::Executor(e) => e,
+		};
+		if !func_executor.tick() {
+			let (mut func_stack, value_stack) =
+				match std::mem::replace(&mut self.func, Func::Stack(Vec::new())) {
+					Func::Executor(e) => e,
+					Func::Stack(_) => panic!("The world doesn't make sense anymore."),
+				}
+				.dispose();
+			self.function_stack.append(&mut func_stack);
+			self.func = Func::Stack(value_stack);
 		}
-
-		if self.value_stack.len() > 0 {
-			println!("Values left on the stack:");
-			for i in self.value_stack.iter().rev() {
-				println!("{}", i);
-			}
-		}
+		true
+	}
+	pub fn start(mut self: Self) {
+		// self._start();
+		while self.tick() {}
 	}
 }
