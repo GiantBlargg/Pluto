@@ -5,18 +5,18 @@ use func_execute::FuncExecutor;
 use memory::MemoryAccessor;
 use std::iter::FromIterator;
 
-struct InteruptVectors {
+pub struct InteruptVectors {
 	reset: u32,
 }
 
-struct PLTHeader {
-	magic: u32,
-	features: u32,
-	mapping: u32,
-	vectors: InteruptVectors,
-	title: String,
-	developer: String,
-	publisher: String,
+pub struct PLTHeader {
+	pub magic: u32,
+	pub features: u32,
+	pub mapping: u32,
+	pub vectors: InteruptVectors,
+	pub title: String,
+	pub developer: String,
+	pub publisher: String,
 }
 
 impl PLTHeader {
@@ -34,7 +34,11 @@ impl PLTHeader {
 }
 
 fn from_utf32(raw: &[u32]) -> String {
-	String::from_iter(raw.iter().map(|c| std::char::from_u32(*c).unwrap_or('\0')))
+	String::from_iter(
+		raw.iter()
+			.map(|c| std::char::from_u32(*c).unwrap_or('\0'))
+			.take_while(|c| c != &'\0'),
+	)
 }
 
 fn convert_24_bit(bytes: Vec<u8>) -> Vec<u32> {
@@ -51,30 +55,30 @@ enum Func {
 
 pub struct PlutoVM {
 	memory: MemoryAccessor,
-	vectors: InteruptVectors,
+	pub header: PLTHeader,
 	func: Func,
 	function_stack: Vec<u32>,
 }
 impl PlutoVM {
 	pub fn new(bytes: Vec<u8>) -> Self {
 		let rom = convert_24_bit(bytes);
-		let hdr = PLTHeader::create(&rom[0..0x40]);
-		assert_eq!(hdr.magic, 0x504c54);
-		assert_eq!(hdr.features, 0);
+		let header = PLTHeader::create(&rom[0..0x40]);
+		assert_eq!(header.magic, 0x504c54);
+		assert_eq!(header.features, 0);
 		print!(
 			"Title:     {}\nDeveloper: {}\nPublisher: {}\n",
-			hdr.title, hdr.developer, hdr.publisher
+			header.title, header.developer, header.publisher
 		);
-		let memory = MemoryAccessor::new(hdr.mapping, rom);
-		let function_stack = vec![hdr.vectors.reset];
+		let memory = MemoryAccessor::new(header.mapping, rom);
+		let function_stack = vec![header.vectors.reset];
 		Self {
 			memory,
-			vectors: hdr.vectors,
+			header,
 			func: Func::Stack(Vec::new()),
 			function_stack,
 		}
 	}
-	fn tick(self: &mut Self) -> bool {
+	pub fn tick(self: &mut Self) -> bool {
 		let func_executor: &mut FuncExecutor = match &mut self.func {
 			Func::Stack(stack) => {
 				let func_ptr = match self.function_stack.pop() {
@@ -113,9 +117,5 @@ impl PlutoVM {
 			self.func = Func::Stack(value_stack);
 		}
 		true
-	}
-	pub fn start(mut self: Self) {
-		// self._start();
-		while self.tick() {}
 	}
 }
