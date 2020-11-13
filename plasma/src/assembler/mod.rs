@@ -46,6 +46,12 @@ impl Assembler {
 			}
 		}
 	}
+	fn def_label(self: &mut Self, name: String, value: u32) {
+		if !self.labels.contains_key(&name) {
+			self.labels.insert(name.clone(), Label::new());
+		}
+		self.labels.get_mut(&name).unwrap().address = Some(value);
+	}
 	fn add_address(self: &mut Self, address: Address) {
 		match address {
 			Address::Const(n) => self.data.push(n),
@@ -89,12 +95,8 @@ impl Assembler {
 				}
 			}
 			Statement::Word(value) => self.add_address(value),
-			Statement::Label(name) => {
-				if !self.labels.contains_key(&name) {
-					self.labels.insert(name.clone(), Label::new());
-				}
-				self.labels.get_mut(&name).unwrap().address = Some(self.data.len() as u32);
-			}
+			Statement::Label(name) => self.def_label(name, self.data.len() as u32),
+			Statement::Def(name, value) => self.def_label(name, value),
 		}
 	}
 	pub fn write(self: Self, mut out: File) -> io::Result<()> {

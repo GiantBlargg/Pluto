@@ -2,15 +2,15 @@ use super::{Address, Function, Instruction, Statement};
 use nom::{
 	alt,
 	branch::alt,
-	bytes::streaming::{tag, tag_no_case, take_while1},
+	bytes::complete::{tag, tag_no_case, take_while1},
 	character::{
+		complete::{digit1, hex_digit1, multispace0},
 		is_alphabetic,
-		streaming::{digit1, hex_digit1, multispace0},
 	},
 	is_not,
 	multi::many0,
-	named, pair,
-	sequence::tuple,
+	named, pair, preceded,
+	sequence::{preceded, tuple},
 	tag, tag_no_case, tuple, value, IResult,
 };
 use std::str::from_utf8;
@@ -24,13 +24,10 @@ fn decimal(i: &[u8]) -> IResult<&[u8], u32> {
 	Ok((r, u32::from_str_radix(from_utf8(n).unwrap(), 10).unwrap()))
 }
 fn hex(i: &[u8]) -> IResult<&[u8], u32> {
-	let (r, (_, n)) = tuple((tag_no_case("0x"), hex_digit1))(i)?;
+	let (r, n) = preceded(tag_no_case("0x"), hex_digit1)(i)?;
 	Ok((r, u32::from_str_radix(from_utf8(n).unwrap(), 16).unwrap()))
 }
-fn number(i: &[u8]) -> IResult<&[u8], u32> {
-	let (r, (_, n)) = tuple((ws, alt((hex, decimal))))(i)?;
-	Ok((r, n))
-}
+named!(number<u32>, preceded!(ws, alt!(hex | decimal)));
 
 macro_rules! simple_inst {
 	($i:expr, $name:expr, $opcode:expr) => {
@@ -43,7 +40,7 @@ fn address_const(i: &[u8]) -> IResult<&[u8], Address> {
 	Ok((r, Address::Const(n)))
 }
 fn address_label(i: &[u8]) -> IResult<&[u8], Address> {
-	let (r, (_, n)) = tuple((ws, label))(i)?;
+	let (r, n) = preceded(ws, label)(i)?;
 	Ok((r, Address::Label(n)))
 }
 named!(address<Address>, alt!(address_const | address_label));
@@ -124,15 +121,15 @@ fn function(i: &[u8]) -> IResult<&[u8], Statement> {
 }
 
 fn skip(i: &[u8]) -> IResult<&[u8], Statement> {
-	let (r, (_, v)) = tuple((tag_no_case("skip"), number))(i)?;
+	let (r, v) = preceded(tag_no_case("skip"), number)(i)?;
 	Ok((r, Statement::Skip(v)))
 }
 fn skip_to(i: &[u8]) -> IResult<&[u8], Statement> {
-	let (r, (_, v)) = tuple((tag_no_case("skipto"), number))(i)?;
+	let (r, v) = preceded(tag_no_case("skipto"), number)(i)?;
 	Ok((r, Statement::SkipTo(v)))
 }
 fn word(i: &[u8]) -> IResult<&[u8], Statement> {
-	let (r, (_, v)) = tuple((tag_no_case("word"), address))(i)?;
+	let (r, v) = preceded(tag_no_case("word"), address)(i)?;
 	Ok((r, Statement::Word(v)))
 }
 
@@ -141,11 +138,15 @@ fn label(i: &[u8]) -> IResult<&[u8], String> {
 	Ok((r, from_utf8(s).unwrap().to_string()))
 }
 fn label_def(i: &[u8]) -> IResult<&[u8], Statement> {
-	let (r, (_, s)) = tuple((tag(":"), label))(i)?;
+	let (r, s) = preceded(tag(":"), label)(i)?;
 	Ok((r, Statement::Label(s)))
+}
+fn def(i: &[u8]) -> IResult<&[u8], Statement> {
+	let (r, (_, _, l, a)) = tuple((tag_no_case("def"), ws, label, number))(i)?;
+	Ok((r, Statement::Def(l, a)))
 }
 
 pub fn statement(i: &[u8]) -> IResult<&[u8], Statement> {
-	let (r, (_, stat)) = tuple((ws, alt((function, skip, skip_to, word, label_def))))(i)?;
+	let (r, stat) = preceded(ws, alt((function, skip, skip_to, word, label_def, def)))(i)?;
 	Ok((r, stat))
 }

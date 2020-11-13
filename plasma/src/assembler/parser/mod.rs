@@ -94,6 +94,7 @@ pub enum Statement {
 	SkipTo(u32),
 	Word(Address),
 	Label(String),
+	Def(String, u32),
 }
 
 pub struct Parser<T: Read> {
